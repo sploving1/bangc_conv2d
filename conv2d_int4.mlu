@@ -1,0 +1,172 @@
+#include <bang.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <sys/time.h>
+#include <math.h>
+
+#define ESP 0.01h
+#define SRC_TYPE int4x2_t
+#define DST_TYPE float
+#define INIT_TYPE unsigned char
+#define CPU_TYPE unsigned char
+
+bool isEqual(DST_TYPE a, DST_TYPE b) {
+  if (fabs(a - b) < ESP)
+    return true;
+  return false;
+}
+
+#define IN_CHANNEL 128
+#define IN_HEIGHT 9
+#define IN_WIDTH 8
+#define FILTER_HEIGHT 2
+#define FILTER_WIDTH 3
+#define STRIDE_HEIGHT 1
+#define STRIDE_WIDTH 1
+#define OUT_CHANNEL 64
+#define DILATION_HEIGHT 1
+#define DILATION_WIDTH 1
+
+#define NEW_FILTER_HEIGHT ((FILTER_HEIGHT - 1) * DILATION_HEIGHT + 1)
+#define NEW_FILTER_WIDTH ((FILTER_WIDTH - 1) * DILATION_WIDTH + 1)
+#define OUT_HEIGHT ((((IN_HEIGHT) - (NEW_FILTER_HEIGHT)) / (STRIDE_HEIGHT)) + 1)
+#define OUT_WIDTH ((((IN_WIDTH) - (NEW_FILTER_WIDTH)) / (STRIDE_WIDTH)) + 1)
+#define OUT_DATA_NUM ((OUT_HEIGHT) * (OUT_WIDTH) * (OUT_CHANNEL))
+#define IN_DATA_NUM ((IN_HEIGHT) * (IN_WIDTH) * (IN_CHANNEL))
+#define FILTER_DATA_NUM ((FILTER_HEIGHT) * (FILTER_WIDTH) *\
+                        (IN_CHANNEL) * (OUT_CHANNEL))
+#define P_DATA_NUM ((OUT_HEIGHT)*(OUT_WIDTH)*(OUT_CHANNEL))
+
+SRC_TYPE A[1][IN_HEIGHT][IN_WIDTH][IN_CHANNEL];
+INIT_TYPE AF[1][IN_HEIGHT][IN_WIDTH][IN_CHANNEL];
+SRC_TYPE B[OUT_CHANNEL][FILTER_HEIGHT][FILTER_WIDTH][IN_CHANNEL];
+INIT_TYPE BF[OUT_CHANNEL][FILTER_HEIGHT][FILTER_WIDTH][IN_CHANNEL];
+CPU_TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
+DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
+
+__mlu_global__ void Conv2D(DST_TYPE *out_data, SRC_TYPE *in_data,
+                              SRC_TYPE *filter_data) {
+  struct timeval start;
+  struct timeval end;
+  gettimeofday(&start, NULL);
+  
+  __nram__ DST_TYPE nram_out_data[OUT_DATA_NUM];
+  __nram__ SRC_TYPE nram_in_data[IN_DATA_NUM];
+  __wram__ SRC_TYPE wram_filter[FILTER_DATA_NUM];
+
+  __memcpy(nram_in_data, in_data, IN_DATA_NUM * sizeof(SRC_TYPE), GDRAM2NRAM);
+  __memcpy(wram_filter, filter_data, FILTER_DATA_NUM * sizeof(SRC_TYPE), GDRAM2WRAM);
+
+  __bang_conv(nram_out_data, nram_in_data, wram_filter,
+                      IN_CHANNEL, IN_HEIGHT, IN_WIDTH,
+                      FILTER_HEIGHT, FILTER_WIDTH, STRIDE_WIDTH, STRIDE_HEIGHT,
+                      OUT_CHANNEL, 0);
+  __memcpy(out_data, nram_out_data, OUT_DATA_NUM * sizeof(DST_TYPE), NRAM2GDRAM);
+  
+  gettimeofday(&end, NULL);
+  uint32_t time_usec = (uint32_t)end.tv_usec - (uint32_t)start.tv_usec;
+  printf("MLU Total Time: %u us\n", time_usec);
+}
+
+void conv2d(CPU_TYPE input[1][IN_HEIGHT][IN_WIDTH][IN_CHANNEL], CPU_TYPE kernel[OUT_CHANNEL][FILTER_HEIGHT][FILTER_WIDTH][IN_CHANNEL], CPU_TYPE output[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL]) {
+  struct timeval start;
+  struct timeval end;
+  gettimeofday(&start, NULL);
+  
+  CPU_TYPE tmp = 0.0, tmp1 = 0.0;
+  for (int m = 0; m < OUT_CHANNEL; m++) {
+    for (int k = 0; k < IN_HEIGHT - FILTER_HEIGHT + 1; k++) {
+      for (int r = 0; r < IN_WIDTH - FILTER_WIDTH + 1; r++) {
+        tmp1 = 0.0;
+        for (int n = 0; n < IN_CHANNEL; n++) {
+          tmp = 0.0;
+          for (int i = 0; i < FILTER_HEIGHT; i++) {
+            for (int j = 0; j < FILTER_WIDTH; j++) {
+              tmp += input[0][i+k][j+r][n] * kernel[m][i][j][n];
+            }
+          }
+          tmp1 += tmp;
+        }
+        output[0][k][r][m] = tmp1;
+      }
+    }
+  }
+  gettimeofday(&end, NULL);
+  uint32_t time_usec = (uint32_t)end.tv_usec - (uint32_t)start.tv_usec;
+  printf("CPU Total Time: %u us\n", time_usec);
+}
+
+
+int main() {
+  cnrtQueue_t queue;
+  cnrtDim3_t dim = {1, 1, 1};
+  cnrtFunctionType_t ktype = CNRT_FUNC_TYPE_BLOCK;
+
+  cnrtQueueCreate(&queue);
+
+  SRC_TYPE *pA, *pB;
+  DST_TYPE *pC;
+  bool isPass = true;
+
+  srand((unsigned)time(NULL));
+	
+  for (int i = 0; i < 1; i++) {
+    for (int j = 0; j < IN_HEIGHT; j++) {
+      for (int m = 0; m < IN_WIDTH; m++) {
+        for (int n = 0; n < IN_CHANNEL; n++) {
+      	  AF[i][j][m][n] = (INIT_TYPE)((rand() % 1000 - rand() % 1000) / 10000.0);
+      	  A[i][j][m][n].value = AF[i][j][m][n];
+	}
+      }
+    }
+  }
+  
+  for (int i = 0; i < OUT_CHANNEL; i++) {
+    for (int j = 0; j < FILTER_HEIGHT; j++) {
+      for (int m = 0; m < FILTER_WIDTH; m++) {
+        for (int n = 0; n < IN_CHANNEL; n++) {
+      	  BF[i][j][m][n] = (INIT_TYPE)((rand() % 1000 - rand() % 1000) / 10000.0);
+      	  B[i][j][m][n].value = BF[i][j][m][n];
+	}
+      }
+    }
+  }
+
+  CNRT_CHECK(cnrtMalloc((void **)&pA, IN_DATA_NUM * sizeof(SRC_TYPE)));
+  CNRT_CHECK(cnrtMalloc((void **)&pB, FILTER_DATA_NUM * sizeof(SRC_TYPE)));
+  CNRT_CHECK(cnrtMalloc((void **)&pC, OUT_DATA_NUM * sizeof(DST_TYPE)));
+  CNRT_CHECK(cnrtMemcpy(pA, A,  IN_DATA_NUM * sizeof(SRC_TYPE), CNRT_MEM_TRANS_DIR_HOST2DEV));
+  CNRT_CHECK(cnrtMemcpy(pB, B, FILTER_DATA_NUM * sizeof(SRC_TYPE), CNRT_MEM_TRANS_DIR_HOST2DEV));
+
+  Conv2D<<<dim, ktype, queue>>>(pC, pA, pB);
+
+  CNRT_CHECK(cnrtQueueSync(queue));
+  CNRT_CHECK(cnrtMemcpy(mlu_result, pC, OUT_DATA_NUM * sizeof(DST_TYPE), CNRT_MEM_TRANS_DIR_DEV2HOST));
+
+  conv2d(AF, BF, cpu_result);
+  
+  for (int i = 0; i < 1; i++) {
+    for (int j = 0; j < OUT_HEIGHT; j++) {
+      for (int m = 0; m < OUT_WIDTH; m++) {
+        for (int n = 0; n < OUT_CHANNEL; n++) {
+          if (!isEqual(cpu_result[i][j][m][n], mlu_result[i][j][m][n])) {
+            isPass = false;
+           printf("i = %d, j = %d, m = %d, n = %d,  mlu: %f != cpu: %d\n", i, j, m, n, mlu_result[i][j][m][n], cpu_result[i][j][m][n]);
+          }
+        }
+      }
+    }
+  }
+
+  printf(isPass ? "PASSED\n" : "FAILED\n");
+
+  CNRT_CHECK(cnrtFree(pA));
+  CNRT_CHECK(cnrtFree(pB));
+  CNRT_CHECK(cnrtFree(pC));
+  CNRT_CHECK(cnrtQueueDestroy(queue));
+
+  return 0;
+}

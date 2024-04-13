@@ -1,0 +1,2 @@
+Test conv2d with different types (float32, float16, bfloat16, int16, int8, int4)
+on CPU and MLU. 
