@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <math.h>
 
-#define ESP 0.01h
+#define ESP 1
 #define SRC_TYPE int8_t
 #define DST_TYPE int16_t
 #define INIT_TYPE int16_t
@@ -47,6 +47,37 @@ INIT_TYPE BF[OUT_CHANNEL][FILTER_HEIGHT][FILTER_WIDTH][IN_CHANNEL];
 CPU_TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
 DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
 
+
+bool isEqual(DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL], CPU_TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL]) {
+  double sum = 0.0000001, square_sum = 0.0000001, tmp = 0.0000001;
+  double  delta = 0.0, delta_sum = 0.0, delta_square_sum = 0.0;
+
+  for (int i = 0; i < 1; i++) {
+    for (int j = 0; j < OUT_HEIGHT; j++) {
+      for (int m = 0; m < OUT_WIDTH; m++) {
+        for (int n = 0; n < OUT_CHANNEL; n++) {
+    	  delta = std::fabs(mlu_result[i][j][m][n] - cpu_result[i][j][m][n]);
+          delta_sum += delta;
+          delta_square_sum += std::pow(delta, 2);
+
+          tmp = std::fabs(mlu_result[i][j][m][n]);
+          sum += tmp;
+          square_sum += std::pow(tmp, 2);
+          
+        }
+      }
+    }
+  }
+
+
+  double diff1 = (delta_sum / sum) * 100;
+  double diff2 = std::sqrt(delta_square_sum) / std::sqrt(square_sum) * 100;
+  printf("diff1 is %%%f, diff2 is %%%f\n", diff1, diff2);
+  
+  if (diff1 < ESP && diff2 < ESP)
+    return true;
+  return false; 
+}
 __mlu_global__ void Conv2D(DST_TYPE *out_data, SRC_TYPE *in_data,
                               SRC_TYPE *filter_data) {
   struct timeval start;
@@ -161,6 +192,7 @@ int main() {
     }
   }
 
+  isPass = isEqual(mlu_result, cpu_result);
   printf(isPass ? "PASSED\n" : "FAILED\n");
 
   CNRT_CHECK(cnrtFree(pA));

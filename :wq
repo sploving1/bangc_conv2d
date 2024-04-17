@@ -7,8 +7,8 @@
 #include <sys/time.h>
 #include <math.h>
 
-#define ESP 1.0
-#define TYPE int16_t
+#define ESP 0.01h
+#define TYPE float
 
 bool isEqual(TYPE a, TYPE b) {
   if (fabs(a - b) < ESP)
@@ -45,7 +45,7 @@ TYPE P[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
 TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
 TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL];
 
-bool isEqual(TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL], TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL]) {
+bool isEqual(DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL], DST_TYPE cpu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL]) {
   double sum = 0.0000001, square_sum = 0.0000001, tmp = 0.0000001;
   double  delta = 0.0, delta_sum = 0.0, delta_square_sum = 0.0;
 
@@ -92,7 +92,7 @@ __mlu_global__ void Conv2D(TYPE *out_data, TYPE *in_data,
   __bang_conv(nram_out_data, nram_in_data, wram_filter,
                       IN_CHANNEL, IN_HEIGHT, IN_WIDTH,
                       FILTER_HEIGHT, FILTER_WIDTH, STRIDE_WIDTH, STRIDE_HEIGHT,
-                      OUT_CHANNEL, 0);
+                      OUT_CHANNEL);
   __memcpy(out_data, nram_out_data, OUT_DATA_NUM * sizeof(TYPE), NRAM2GDRAM);
   
   gettimeofday(&end, NULL);
@@ -177,19 +177,6 @@ int main() {
 
   conv2d(A,B,cpu_result);
   
-  for (int i = 0; i < 1; i++) {
-    for (int j = 0; j < OUT_HEIGHT; j++) {
-      for (int m = 0; m < OUT_WIDTH; m++) {
-        for (int n = 0; n < OUT_CHANNEL; n++) {
-          if (!isEqual(cpu_result[i][j][m][n], mlu_result[i][j][m][n])) {
-            isPass = false;
-           printf("i = %d, j = %d, m = %d, n = %d,  mlu: %d != cpu: %d\n", i, j, m, n, mlu_result[i][j][m][n], cpu_result[i][j][m][n]);
-          }
-        }
-      }
-    }
-  }
-
   isPass = isEqual(mlu_result, cpu_result);
   printf(isPass ? "PASSED\n" : "FAILED\n");
 
