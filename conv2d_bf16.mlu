@@ -71,7 +71,7 @@ bool isEqual(DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL], DST_TYP
 
   double diff1 = (delta_sum / sum) * 100;
   double diff2 = std::sqrt(delta_square_sum) / std::sqrt(square_sum) * 100;
-  printf("diff1 is %%%f, diff2 is %%%f\n", diff1, diff2);
+  printf("diff1 is %f%%, diff2 is %f%%\n", diff1, diff2);
   
   if (diff1 < ESP && diff2 < ESP)
     return true;
@@ -172,7 +172,7 @@ int main() {
       for (int m = 0; m < IN_WIDTH; m++) {
         for (int n = 0; n < IN_CHANNEL; n++) {
       	  AF[i][j][m][n] = (INIT_TYPE)((rand() % 1000 - rand() % 1000) / 10000.0);
-      	  A[i][j][m][n].value = float32_to_bfloat16(AF[i][j][m][n]);
+      	  A[i][j][m][n] = __float2bfloat16__(AF[i][j][m][n]);
 	}
       }
     }
@@ -183,7 +183,7 @@ int main() {
       for (int m = 0; m < FILTER_WIDTH; m++) {
         for (int n = 0; n < IN_CHANNEL; n++) {
       	  BF[i][j][m][n] = (INIT_TYPE)((rand() % 1000 - rand() % 1000) / 10000.0);
-      	  B[i][j][m][n].value = float32_to_bfloat16(BF[i][j][m][n]);
+      	  B[i][j][m][n] = __float2bfloat16__(BF[i][j][m][n]);
 	}
       }
     }

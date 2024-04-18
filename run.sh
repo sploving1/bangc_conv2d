@@ -3,6 +3,8 @@ if [ ! -d "build" ]; then
 fi
 echo "Runing conv2d with float32 type"
 ./build/conv2d_f32
+echo "Runing conv2d with tfloat32 type"
+./build/conv2d_tf32
 echo "Runing conv2d with float16 type"
 ./build/conv2d_f16
 echo "Runing conv2d with bfloat16 type"

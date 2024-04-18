@@ -72,7 +72,7 @@ bool isEqual(DST_TYPE mlu_result[1][OUT_HEIGHT][OUT_WIDTH][OUT_CHANNEL], CPU_TYP
 
   double diff1 = (delta_sum / sum) * 100;
   double diff2 = std::sqrt(delta_square_sum) / std::sqrt(square_sum) * 100;
-  printf("diff1 is %%%f, diff2 is %%%f\n", diff1, diff2);
+  printf("diff1 is %f%%, diff2 is %f%%\n", diff1, diff2);
   
   if (diff1 < ESP && diff2 < ESP)
     return true;
